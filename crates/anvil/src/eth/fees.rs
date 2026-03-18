@@ -17,6 +17,7 @@ use crate::eth::{
     backend::{info::StorageInfo, notifications::NewBlockNotifications},
     error::BlockchainError,
 };
+use foundry_primitives::FoundryNetwork;
 
 /// Maximum number of entries in the fee history cache
 pub const MAX_FEE_HISTORY_CACHE_SIZE: u64 = 2048u64;
@@ -167,9 +168,9 @@ impl FeeManager {
         self.blob_params().calc_blob_fee(self.blob_excess_gas_and_price.read().excess_blob_gas)
     }
 
-    /// Calculates the next block blob excess gas, using the provided parent blob gas used and
-    /// parent blob excess gas
-    pub fn get_next_block_blob_excess_gas(&self, blob_gas_used: u64, blob_excess_gas: u64) -> u64 {
+    /// Calculates the next block blob excess gas, using the provided parent blob excess gas and
+    /// parent blob gas used
+    pub fn get_next_block_blob_excess_gas(&self, blob_excess_gas: u64, blob_gas_used: u64) -> u64 {
         self.blob_params().next_block_excess_blob_gas_osaka(
             blob_excess_gas,
             blob_gas_used,
@@ -199,7 +200,7 @@ pub struct FeeHistoryService {
     /// number of items to consider
     fee_history_limit: u64,
     /// a type that can fetch ethereum-storage data
-    storage_info: StorageInfo,
+    storage_info: StorageInfo<FoundryNetwork>,
 }
 
 impl FeeHistoryService {
@@ -207,7 +208,7 @@ impl FeeHistoryService {
         blob_params: BlobParams,
         new_blocks: NewBlockNotifications,
         cache: FeeHistoryCache,
-        storage_info: StorageInfo,
+        storage_info: StorageInfo<FoundryNetwork>,
     ) -> Self {
         Self {
             blob_params,
