@@ -43,14 +43,20 @@ use alloy_network::{
     TransactionBuilder4844, TransactionResponse, eip2718::Decodable2718,
 };
 use alloy_primitives::{
-    Address, B64, B256, Bytes, TxHash, TxKind, U64, U256,
+    Address, B64, B256, BlockHash, Bytes, ChainId, TxHash, TxKind, U64, U256,
     map::{HashMap, HashSet},
 };
 use alloy_rpc_types::{
     AccessList, AccessListResult, BlockId, BlockNumberOrTag as BlockNumber, BlockTransactions,
     EIP1186AccountProofResponse, FeeHistory, Filter, FilteredParams, Index, Log, Work,
     anvil::{
-        ForkedNetwork, Forking, Metadata, MineOptions, NodeEnvironment, NodeForkConfig, NodeInfo,
+        ForkedNetwork,
+        Forking,
+        // Metadata,
+        MineOptions,
+        NodeEnvironment,
+        NodeForkConfig,
+        NodeInfo,
     },
     request::TransactionRequest,
     simulate::{SimulatePayload, SimulatedBlock},
@@ -93,11 +99,38 @@ use revm::{
     interpreter::{InstructionResult, return_ok, return_revert},
     primitives::eip7702::PER_EMPTY_ACCOUNT_COST,
 };
-use std::{sync::Arc, time::Duration};
+use serde::{Deserialize, Serialize};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tokio::{
     sync::mpsc::{UnboundedReceiver, unbounded_channel},
     try_join,
 };
+
+/// FIXME: remove and uncoment import after merge on alloy repo
+///
+/// Anvil equivalent of `hardhat_metadata`.
+/// Metadata about the current Anvil instance.
+/// See <https://hardhat.org/hardhat-network/docs/reference#hardhat_metadata>
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Metadata {
+    /// Client version
+    pub client_version: String,
+    /// Client SemVer compatible version
+    pub client_semver: String,
+    /// Chain id of the node.
+    pub chain_id: ChainId,
+    /// Unique instance id
+    pub instance_id: B256,
+    /// Latest block number
+    pub latest_block_number: u64,
+    /// Latest block hash
+    pub latest_block_hash: BlockHash,
+    /// Forked network info
+    pub forked_network: Option<ForkedNetwork>,
+    /// Snapshots of the chain
+    pub snapshots: BTreeMap<U256, (u64, B256)>,
+}
 
 /// The client version: `anvil/v{major}.{minor}.{patch}`
 pub const CLIENT_VERSION: &str = concat!("anvil/v", env!("CARGO_PKG_VERSION"));
