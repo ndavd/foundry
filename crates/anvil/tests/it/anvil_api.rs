@@ -12,15 +12,26 @@ use alloy_provider::{Provider, ext::TxPoolApi};
 use alloy_rpc_types::{
     BlockId, BlockNumberOrTag, TransactionRequest,
     anvil::{
-        ForkedNetwork, Forking, Metadata, MineOptions, NodeEnvironment, NodeForkConfig, NodeInfo,
+        ForkedNetwork,
+        Forking,
+        // Metadata,
+        MineOptions,
+        NodeEnvironment,
+        NodeForkConfig,
+        NodeInfo,
     },
 };
 use alloy_serde::WithOtherFields;
-use anvil::{NodeConfig, eth::api::CLIENT_VERSION, spawn};
+use anvil::{
+    NodeConfig,
+    eth::api::{CLIENT_VERSION, Metadata},
+    spawn,
+};
 use anvil_core::{
     eth::EthRequest,
     types::{ReorgOptions, TransactionData},
 };
+use foundry_common::version::{COMMIT_SHA, SEMVER_VERSION};
 use foundry_evm::hardfork::EthereumHardfork;
 
 use std::{
@@ -481,6 +492,8 @@ async fn can_get_metadata() {
         latest_block_number: block_number,
         chain_id,
         client_version: CLIENT_VERSION.to_string(),
+        client_semver: Some(SEMVER_VERSION.to_string()),
+        client_commit_sha: Some(COMMIT_SHA.to_string()),
         instance_id: api.instance_id(),
         forked_network: None,
         snapshots: Default::default(),
@@ -506,6 +519,8 @@ async fn can_get_metadata_on_fork() {
         latest_block_number: block_number,
         chain_id,
         client_version: CLIENT_VERSION.to_string(),
+        client_semver: Some(SEMVER_VERSION.to_string()),
+        client_commit_sha: Some(COMMIT_SHA.to_string()),
         instance_id: api.instance_id(),
         forked_network: Some(ForkedNetwork {
             chain_id,
