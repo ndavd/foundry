@@ -54,9 +54,9 @@ use alloy_evm::{
 };
 use alloy_network::{
     AnyHeader, AnyRpcBlock, AnyRpcHeader, AnyRpcTransaction, AnyTxEnvelope, AnyTxType, Network,
-    ReceiptResponse, TransactionBuilder, UnknownTxEnvelope, UnknownTypedTransaction,
+    NetworkTransactionBuilder, ReceiptResponse, UnknownTxEnvelope, UnknownTypedTransaction,
 };
-use alloy_op_evm::OpEvmFactory;
+use alloy_op_evm::{OpEvmFactory, OpTx};
 use alloy_primitives::{
     Address, B256, Bloom, Bytes, TxHash, TxKind, U64, U256, hex, keccak256, logs_bloom,
     map::{AddressMap, HashMap, HashSet},
@@ -119,7 +119,7 @@ use revm::{
     context::{Block as RevmBlock, BlockEnv, Cfg, TxEnv},
     context_interface::{
         block::BlobExcessGasAndPrice,
-        result::{ExecutionResult, HaltReason, Output, ResultAndState},
+        result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState},
     },
     database::{CacheDB, DbAccount, WrapDatabaseRef},
     interpreter::InstructionResult,
@@ -183,7 +183,7 @@ impl<T> fmt::Debug for BlockRequest<T> {
 }
 
 impl<T> BlockRequest<T> {
-    pub fn block_number(&self) -> BlockNumber {
+    pub const fn block_number(&self) -> BlockNumber {
         match *self {
             Self::Pending(_) => BlockNumber::Pending,
             Self::Number(n) => BlockNumber::Number(n),
@@ -352,12 +352,12 @@ impl<N: Network> Backend<N> {
     }
 
     /// Returns the `TimeManager` responsible for timestamps
-    pub fn time(&self) -> &TimeManager {
+    pub const fn time(&self) -> &TimeManager {
         &self.time
     }
 
     /// Returns the `CheatsManager` responsible for executing cheatcodes
-    pub fn cheats(&self) -> &CheatsManager {
+    pub const fn cheats(&self) -> &CheatsManager {
         &self.cheats
     }
 
@@ -369,12 +369,12 @@ impl<N: Network> Backend<N> {
     }
 
     /// Returns the `FeeManager` that manages fee/pricings
-    pub fn fees(&self) -> &FeeManager {
+    pub const fn fees(&self) -> &FeeManager {
         &self.fees
     }
 
     /// The EVM environment data of the blockchain
-    pub fn evm_env(&self) -> &Arc<RwLock<EvmEnv>> {
+    pub const fn evm_env(&self) -> &Arc<RwLock<EvmEnv>> {
         &self.evm_env
     }
 
@@ -408,7 +408,7 @@ impl<N: Network> Backend<N> {
     }
 
     /// Returns the genesis data for the Beacon API.
-    pub fn genesis_time(&self) -> u64 {
+    pub const fn genesis_time(&self) -> u64 {
         self.genesis.timestamp
     }
 
@@ -483,17 +483,17 @@ impl<N: Network> Backend<N> {
     }
 
     /// Returns true if op-stack deposits are active
-    pub fn is_optimism(&self) -> bool {
+    pub const fn is_optimism(&self) -> bool {
         self.networks.is_optimism()
     }
 
     /// Returns true if Tempo network mode is active
-    pub fn is_tempo(&self) -> bool {
+    pub const fn is_tempo(&self) -> bool {
         self.networks.is_tempo()
     }
 
     /// Returns the active hardfork.
-    pub fn hardfork(&self) -> FoundryHardfork {
+    pub const fn hardfork(&self) -> FoundryHardfork {
         self.hardfork
     }
 
@@ -582,7 +582,7 @@ impl<N: Network> Backend<N> {
     }
 
     /// Returns an error if op-stack deposits are not active
-    pub fn ensure_op_deposits_active(&self) -> Result<(), BlockchainError> {
+    pub const fn ensure_op_deposits_active(&self) -> Result<(), BlockchainError> {
         if self.is_optimism() {
             return Ok(());
         }
@@ -590,7 +590,7 @@ impl<N: Network> Backend<N> {
     }
 
     /// Returns an error if Tempo transactions are not active
-    pub fn ensure_tempo_active(&self) -> Result<(), BlockchainError> {
+    pub const fn ensure_tempo_active(&self) -> Result<(), BlockchainError> {
         if self.is_tempo() {
             return Ok(());
         }
@@ -637,7 +637,7 @@ impl<N: Network> Backend<N> {
     }
 
     /// Returns whether the minimum suggested priority fee is enforced
-    pub fn is_min_priority_fee_enforced(&self) -> bool {
+    pub const fn is_min_priority_fee_enforced(&self) -> bool {
         self.fees.is_min_priority_fee_enforced()
     }
 
@@ -1152,7 +1152,12 @@ impl<N: Network> Backend<N> {
                 inspector,
             );
             self.inject_precompiles(evm.precompiles_mut());
-            let result = evm.transact(tx_env)?;
+            let result = evm.transact(OpTx(tx_env)).map_err(|e| match e {
+                EVMError::Database(db) => EVMError::Database(db),
+                EVMError::Header(h) => EVMError::Header(h),
+                EVMError::Custom(s) => EVMError::Custom(s),
+                EVMError::Transaction(t) => EVMError::Transaction(t),
+            })?;
             Ok(ResultAndState {
                 result: result.result.map_haltreason(|h| match h {
                     OpHaltReason::Base(eth) => eth,
@@ -1290,7 +1295,8 @@ impl<N: Network> Backend<N> {
                 evm_env.cfg_env.clone().with_spec_and_mainnet_gas_params(OpSpecId::ISTHMUS),
                 evm_env.block_env.clone(),
             );
-            let mut evm = OpEvmFactory::default().create_evm_with_inspector(db, op_env, inspector);
+            let mut evm =
+                OpEvmFactory::<OpTx>::default().create_evm_with_inspector(db, op_env, inspector);
             run!(evm)
         } else if self.is_tempo() {
             let hardfork = TempoHardfork::from(self.hardfork);
@@ -1412,8 +1418,10 @@ impl<N: Network> Backend<N> {
             evm_env.cfg_env.disable_base_fee = true;
         }
 
-        // Deposit transaction?
-        if let Ok(deposit) = get_deposit_tx_parts(&other) {
+        // Deposit transaction? (only valid when op-stack deposits are active)
+        if self.ensure_op_deposits_active().is_ok()
+            && let Ok(deposit) = get_deposit_tx_parts(&other)
+        {
             tx_env.deposit = deposit;
         }
 
@@ -2376,12 +2384,12 @@ where
 
         // get the range that predates the fork if any
         if let Some(fork) = self.get_fork() {
-            let mut to_on_fork = to;
-
-            if !fork.predates_fork(to) {
+            let to_on_fork = if fork.predates_fork(to) {
+                to
+            } else {
                 // adjust the ranges
-                to_on_fork = fork.block_number();
-            }
+                fork.block_number()
+            };
 
             if fork.predates_fork_inclusive(from) {
                 // this data is only available on the forked client
@@ -2495,6 +2503,8 @@ where
             excess_blob_gas: if is_cancun { evm_env.block_env.blob_excess_gas() } else { None },
             withdrawals_root: is_shanghai.then_some(EMPTY_WITHDRAWALS),
             requests_hash: is_prague.then_some(EMPTY_REQUESTS_HASH),
+            block_access_list_hash: None,
+            slot_number: None,
         };
 
         let block = create_block(header, transactions);
@@ -2964,7 +2974,7 @@ where
                             tx_env.clone(),
                         )?;
                         let res = inspector
-                            .json_result(result, &tx_env.into_tx_env(), &block, &cache_db)
+                            .json_result(result, &OpTx(tx_env).into_tx_env(), &block, &cache_db)
                             .map_err(|err| BlockchainError::Message(err.to_string()))?;
 
                         Ok(GethTrace::JS(res))
@@ -3932,6 +3942,7 @@ impl Backend<FoundryNetwork> {
                     let sim_res = SimCallResult {
                         return_data,
                         gas_used: result.gas_used(),
+                        max_used_gas: None,
                         status: result.is_success(),
                         error: result.is_success().not().then(|| {
                             alloy_rpc_types::simulate::SimulateError {
@@ -4083,7 +4094,7 @@ where
 
             // Reject if valid_before is expired or too close to current time (< 3 seconds)
             const AA_VALID_BEFORE_MIN_SECS: u64 = 3;
-            if let Some(valid_before) = tempo_tx.valid_before {
+            if let Some(valid_before) = tempo_tx.valid_before.map(|v| v.get()) {
                 let min_allowed = current_time.saturating_add(AA_VALID_BEFORE_MIN_SECS);
                 if valid_before <= min_allowed {
                     return Err(InvalidTransactionError::TempoValidBeforeExpired {
@@ -4096,7 +4107,7 @@ where
 
             // Reject if valid_after is too far in the future (> 1 hour)
             const AA_VALID_AFTER_MAX_SECS: u64 = 3600;
-            if let Some(valid_after) = tempo_tx.valid_after {
+            if let Some(valid_after) = tempo_tx.valid_after.map(|v| v.get()) {
                 let max_allowed = current_time.saturating_add(AA_VALID_AFTER_MAX_SECS);
                 if valid_after > max_allowed {
                     return Err(InvalidTransactionError::TempoValidAfterTooFar {
