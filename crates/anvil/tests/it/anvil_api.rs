@@ -12,21 +12,11 @@ use alloy_provider::{Provider, ext::TxPoolApi};
 use alloy_rpc_types::{
     BlockId, BlockNumberOrTag, TransactionRequest,
     anvil::{
-        ForkedNetwork,
-        Forking,
-        // Metadata,
-        MineOptions,
-        NodeEnvironment,
-        NodeForkConfig,
-        NodeInfo,
+        ForkedNetwork, Forking, Metadata, MineOptions, NodeEnvironment, NodeForkConfig, NodeInfo,
     },
 };
 use alloy_serde::WithOtherFields;
-use anvil::{
-    NodeConfig,
-    eth::api::{CLIENT_VERSION, Metadata},
-    spawn,
-};
+use anvil::{NodeConfig, eth::api::CLIENT_VERSION, spawn};
 use anvil_core::{
     eth::EthRequest,
     types::{ReorgOptions, TransactionData},
