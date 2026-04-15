@@ -407,6 +407,40 @@ fn format_spec<'a>(
     }
 }
 
+pub fn console_table_format(
+    keys: Option<&[&dyn ConsoleFmt]>,
+    values: &[&dyn ConsoleFmt],
+) -> String {
+    let keys_header = "(index)";
+    let values_header = "Values";
+
+    let keys_strings: Vec<String> = match keys {
+        Some(keys) => keys.iter().map(|k| k.fmt(FormatSpec::String)).collect(),
+        None => (0..values.len()).map(|i| i.to_string()).collect(),
+    };
+    let values_strings: Vec<String> = values.iter().map(|v| v.fmt(FormatSpec::String)).collect();
+
+    let key_width = keys_strings.iter().map(|s| s.len()).max().unwrap_or(0).max(keys_header.len());
+    let value_width =
+        values_strings.iter().map(|s| s.len()).max().unwrap_or(0).max(values_header.len());
+
+    let border = |l: char, m: char, r: char| {
+        format!("{l}{}{m}{}{r}", "─".repeat(key_width + 2), "─".repeat(value_width + 2))
+    };
+
+    let mut out = String::new();
+    writeln!(out, "{}", border('┌', '┬', '┐')).unwrap();
+    writeln!(out, "│ {keys_header:<key_width$} │ {values_header:<value_width$} │").unwrap();
+    writeln!(out, "{}", border('├', '┼', '┤')).unwrap();
+    for i in 0..keys_strings.len().max(values_strings.len()) {
+        let key = keys_strings.get(i).map(String::as_str).unwrap_or("");
+        let value = values_strings.get(i).map(String::as_str).unwrap_or("");
+        writeln!(out, "│ {key:<key_width$} │ {value:<value_width$} │").unwrap();
+    }
+    write!(out, "{}", border('└', '┴', '┘')).unwrap();
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -609,5 +643,80 @@ mod tests {
         assert_eq!(log1.fmt(Default::default()), "foo 42 bar");
         let call = Logs::Log1(log1);
         assert_eq!(call.fmt(Default::default()), "foo 42 bar");
+    }
+
+    #[test]
+    fn test_console_table_format() {
+        // auto-indexed, uint256 values
+        let values: &[&dyn ConsoleFmt] = &[&U256::from(100), &U256::from(200), &U256::from(300)];
+        assert_eq!(
+            console_table_format(None, values),
+            "┌─────────┬────────┐\n\
+             │ (index) │ Values │\n\
+             ├─────────┼────────┤\n\
+             │ 0       │ 100    │\n\
+             │ 1       │ 200    │\n\
+             │ 2       │ 300    │\n\
+             └─────────┴────────┘"
+        );
+
+        // string keys, uint256 values
+        // key col expands to fit "charlie123" and value col expands to fit "20000000000000000"
+        let keys: &[&dyn ConsoleFmt] =
+            &[&String::from("alice"), &String::from("bob"), &String::from("charlie123")];
+        let values: &[&dyn ConsoleFmt] = &[
+            &U256::from(1),
+            &U256::from_str("20000000000000000").unwrap(),
+            &U256::from_str("30000000000").unwrap(),
+        ];
+        assert_eq!(
+            console_table_format(Some(keys), values),
+            "┌────────────┬───────────────────┐\n\
+             │ (index)    │ Values            │\n\
+             ├────────────┼───────────────────┤\n\
+             │ alice      │ 1                 │\n\
+             │ bob        │ 20000000000000000 │\n\
+             │ charlie123 │ 30000000000       │\n\
+             └────────────┴───────────────────┘"
+        );
+
+        // empty table
+        assert_eq!(
+            console_table_format(None, &[]),
+            "┌─────────┬────────┐\n\
+             │ (index) │ Values │\n\
+             ├─────────┼────────┤\n\
+             └─────────┴────────┘"
+        );
+
+        // more keys than values
+        let keys: &[&dyn ConsoleFmt] =
+            &[&String::from("alice"), &String::from("bob"), &String::from("charlie")];
+        let values: &[&dyn ConsoleFmt] = &[&U256::from(1), &U256::from(2)];
+        assert_eq!(
+            console_table_format(Some(keys), values),
+            "┌─────────┬────────┐\n\
+             │ (index) │ Values │\n\
+             ├─────────┼────────┤\n\
+             │ alice   │ 1      │\n\
+             │ bob     │ 2      │\n\
+             │ charlie │        │\n\
+             └─────────┴────────┘"
+        );
+
+        // more values than keys
+        let keys: &[&dyn ConsoleFmt] = &[&String::from("alice"), &String::from("bob")];
+        let values: &[&dyn ConsoleFmt] = &[&U256::from(1), &U256::from(2), &U256::from(3), &U256::from(4)];
+        assert_eq!(
+            console_table_format(Some(keys), values),
+            "┌─────────┬────────┐\n\
+             │ (index) │ Values │\n\
+             ├─────────┼────────┤\n\
+             │ alice   │ 1      │\n\
+             │ bob     │ 2      │\n\
+             │         │ 3      │\n\
+             │         │ 4      │\n\
+             └─────────┴────────┘"
+        );
     }
 }
