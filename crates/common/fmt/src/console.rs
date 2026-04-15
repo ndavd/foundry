@@ -706,7 +706,8 @@ mod tests {
 
         // more values than keys
         let keys: &[&dyn ConsoleFmt] = &[&String::from("alice"), &String::from("bob")];
-        let values: &[&dyn ConsoleFmt] = &[&U256::from(1), &U256::from(2), &U256::from(3), &U256::from(4)];
+        let values: &[&dyn ConsoleFmt] =
+            &[&U256::from(1), &U256::from(2), &U256::from(3), &U256::from(4)];
         assert_eq!(
             console_table_format(Some(keys), values),
             "┌─────────┬────────┐\n\
