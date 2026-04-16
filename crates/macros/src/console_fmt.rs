@@ -38,6 +38,7 @@ fn impl_struct(s: &DataStruct, name: &Ident) -> Option<TokenStream> {
 
     let members = s.fields.members().collect::<Vec<_>>();
 
+    // TODO: name-based dispatches may be fragile; find a better way to detect table structs
     if name.to_string().starts_with("table") {
         let member_ref = |m: &Member| match m {
             Member::Named(ident) => quote!(&self.#ident),
