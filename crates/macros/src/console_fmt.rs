@@ -7,7 +7,7 @@ use syn::{
 pub fn console_fmt(input: &DeriveInput) -> TokenStream {
     let name = &input.ident;
     let tokens = match &input.data {
-        Data::Struct(s) => derive_struct(s),
+        Data::Struct(s) => derive_struct(s, name),
         Data::Enum(e) => derive_enum(e),
         Data::Union(_) => return quote!(compile_error!("Unions are unsupported");),
     };
@@ -18,8 +18,8 @@ pub fn console_fmt(input: &DeriveInput) -> TokenStream {
     }
 }
 
-fn derive_struct(s: &DataStruct) -> TokenStream {
-    let imp = impl_struct(s).unwrap_or_else(|| quote!(String::new()));
+fn derive_struct(s: &DataStruct, name: &Ident) -> TokenStream {
+    let imp = impl_struct(s, name).unwrap_or_else(|| quote!(String::new()));
     quote! {
         fn fmt(&self, _spec: FormatSpec) -> String {
             #imp
@@ -27,7 +27,7 @@ fn derive_struct(s: &DataStruct) -> TokenStream {
     }
 }
 
-fn impl_struct(s: &DataStruct) -> Option<TokenStream> {
+fn impl_struct(s: &DataStruct, name: &Ident) -> Option<TokenStream> {
     if s.fields.is_empty() {
         return None;
     }
@@ -39,16 +39,16 @@ fn impl_struct(s: &DataStruct) -> Option<TokenStream> {
     let members = s.fields.members().collect::<Vec<_>>();
     let fields = s.fields.iter().collect::<Vec<_>>();
 
-    // Detect table call structs by checking that all fields are Vec<T> types (Solidity arrays).
-    // `table` calls always use array arguments; regular `log` calls never do.
-    let all_vec = !fields.is_empty()
+    // Detect table call structs: name must start with "table" (from the ABI function name) and
+    // all fields must be Vec<T> types (Solidity arrays). Both conditions together prevent
+    // accidental table rendering for unrelated structs that happen to have Vec fields.
+    let is_table = name.to_string().starts_with("table")
+        && !fields.is_empty()
         && fields.iter().all(|f| match &f.ty {
-            Type::Path(path) => {
-                path.path.segments.last().is_some_and(|path_segment| path_segment.ident == "Vec")
-            }
+            Type::Path(path) => path.path.segments.last().is_some_and(|seg| seg.ident == "Vec"),
             _ => false,
         });
-    if all_vec {
+    if is_table {
         let member_ref = |m: &Member| match m {
             Member::Named(ident) => quote!(&self.#ident),
             Member::Unnamed(idx) => quote!(&self.#idx),
