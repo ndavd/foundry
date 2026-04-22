@@ -7,7 +7,7 @@ use syn::{
 pub fn console_fmt(input: &DeriveInput) -> TokenStream {
     let name = &input.ident;
     let tokens = match &input.data {
-        Data::Struct(s) => derive_struct(s, name),
+        Data::Struct(s) => derive_struct(s),
         Data::Enum(e) => derive_enum(e),
         Data::Union(_) => return quote!(compile_error!("Unions are unsupported");),
     };
@@ -18,8 +18,8 @@ pub fn console_fmt(input: &DeriveInput) -> TokenStream {
     }
 }
 
-fn derive_struct(s: &DataStruct, name: &Ident) -> TokenStream {
-    let imp = impl_struct(s, name).unwrap_or_else(|| quote!(String::new()));
+fn derive_struct(s: &DataStruct) -> TokenStream {
+    let imp = impl_struct(s).unwrap_or_else(|| quote!(String::new()));
     quote! {
         fn fmt(&self, _spec: FormatSpec) -> String {
             #imp
@@ -27,7 +27,7 @@ fn derive_struct(s: &DataStruct, name: &Ident) -> TokenStream {
     }
 }
 
-fn impl_struct(s: &DataStruct, name: &Ident) -> Option<TokenStream> {
+fn impl_struct(s: &DataStruct) -> Option<TokenStream> {
     if s.fields.is_empty() {
         return None;
     }
@@ -37,9 +37,18 @@ fn impl_struct(s: &DataStruct, name: &Ident) -> Option<TokenStream> {
     }
 
     let members = s.fields.members().collect::<Vec<_>>();
+    let fields = s.fields.iter().collect::<Vec<_>>();
 
-    // TODO: name-based dispatches may be fragile; find a better way to detect table structs
-    if name.to_string().starts_with("table") {
+    // Detect table call structs by checking that all fields are Vec<T> types (Solidity arrays).
+    // `table` calls always use array arguments; regular `log` calls never do.
+    let all_vec = !fields.is_empty()
+        && fields.iter().all(|f| match &f.ty {
+            Type::Path(path) => {
+                path.path.segments.last().is_some_and(|path_segment| path_segment.ident == "Vec")
+            }
+            _ => false,
+        });
+    if all_vec {
         let member_ref = |m: &Member| match m {
             Member::Named(ident) => quote!(&self.#ident),
             Member::Unnamed(idx) => quote!(&self.#idx),
@@ -65,7 +74,6 @@ fn impl_struct(s: &DataStruct, name: &Ident) -> Option<TokenStream> {
         return Some(imp);
     }
 
-    let fields = s.fields.iter().collect::<Vec<_>>();
     let first_ty = match &fields.first().unwrap().ty {
         Type::Path(path) => path.path.segments.last().unwrap().ident.to_string(),
         _ => String::new(),
