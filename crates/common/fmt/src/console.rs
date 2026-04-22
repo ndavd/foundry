@@ -1,5 +1,6 @@
 use super::UIfmt;
 use alloy_primitives::{Address, Bytes, FixedBytes, I256, U256};
+use comfy_table::{Table, TableComponent, presets::UTF8_FULL};
 use std::fmt::{self, Write};
 
 /// A piece is a portion of the format string which represents the next part to emit.
@@ -411,34 +412,30 @@ pub fn console_table_format(
     keys: Option<&[&dyn ConsoleFmt]>,
     values: &[&dyn ConsoleFmt],
 ) -> String {
-    let keys_header = "(index)";
-    let values_header = "Values";
-
     let keys_strings: Vec<String> = match keys {
         Some(keys) => keys.iter().map(|k| k.fmt(FormatSpec::String)).collect(),
         None => (0..values.len()).map(|i| i.to_string()).collect(),
     };
     let values_strings: Vec<String> = values.iter().map(|v| v.fmt(FormatSpec::String)).collect();
 
-    let key_width = keys_strings.iter().map(|s| s.len()).max().unwrap_or(0).max(keys_header.len());
-    let value_width =
-        values_strings.iter().map(|s| s.len()).max().unwrap_or(0).max(values_header.len());
-
-    let border = |l: char, m: char, r: char| {
-        format!("{l}{}{m}{}{r}", "─".repeat(key_width + 2), "─".repeat(value_width + 2))
-    };
-
-    let mut out = String::new();
-    writeln!(out, "{}", border('┌', '┬', '┐')).unwrap();
-    writeln!(out, "│ {keys_header:<key_width$} │ {values_header:<value_width$} │").unwrap();
-    writeln!(out, "{}", border('├', '┼', '┤')).unwrap();
+    let mut table = Table::new();
+    table.load_preset(UTF8_FULL);
+    table.set_style(TableComponent::VerticalLines, '│');
+    table.set_style(TableComponent::HeaderLines, '─');
+    table.set_style(TableComponent::MiddleHeaderIntersections, '┼');
+    table.set_style(TableComponent::LeftHeaderIntersection, '├');
+    table.set_style(TableComponent::RightHeaderIntersection, '┤');
+    table.set_header(vec!["(index)", "Values"]);
+    table.remove_style(TableComponent::HorizontalLines);
+    table.remove_style(TableComponent::MiddleIntersections);
+    table.remove_style(TableComponent::LeftBorderIntersections);
+    table.remove_style(TableComponent::RightBorderIntersections);
     for i in 0..keys_strings.len().max(values_strings.len()) {
         let key = keys_strings.get(i).map(String::as_str).unwrap_or("");
         let value = values_strings.get(i).map(String::as_str).unwrap_or("");
-        writeln!(out, "│ {key:<key_width$} │ {value:<value_width$} │").unwrap();
+        table.add_row(vec![key, value]);
     }
-    write!(out, "{}", border('└', '┴', '┘')).unwrap();
-    out
+    table.to_string()
 }
 
 #[cfg(test)]
