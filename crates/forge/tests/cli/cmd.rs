@@ -962,6 +962,25 @@ forgetest!(can_execute_test_and_script_with_default_tempo_config, |prj, cmd| {
         .assert_success();
 });
 
+// checks that `forge test --tempo` and `forge test -n tempo` are equivalent
+forgetest!(network_flag_tempo_equivalent_to_legacy_tempo, |prj, cmd| {
+    prj.wipe();
+    cmd.args(["init", "--network", "tempo"]).arg(prj.root()).assert_success();
+
+    // --network tempo (new flag)
+    cmd.forge_fuse()
+        .args(["test", "--network", "tempo"])
+        .arg("--root")
+        .arg(prj.root())
+        .assert_success();
+
+    // -n tempo (short form)
+    cmd.forge_fuse().args(["test", "-n", "tempo"]).arg("--root").arg(prj.root()).assert_success();
+
+    // --tempo (legacy flag)
+    cmd.forge_fuse().args(["test", "--tempo"]).arg("--root").arg(prj.root()).assert_success();
+});
+
 // checks that clone works with raw src containing `node_modules`
 // <https://github.com/foundry-rs/foundry/issues/10115>
 forgetest!(flaky_can_clone_with_node_modules, |prj, cmd| {
@@ -2974,7 +2993,7 @@ Suite result: ok. 1 passed; 0 failed; 0 skipped; [ELAPSED]
 +=====================================================================================================================+
 | Deployment Cost                                                | Deployment Size |       |        |       |         |
 |----------------------------------------------------------------+-----------------+-------+--------+-------+---------|
-|                                                         132471 |             396 |       |        |       |         |
+|                                                         132459 |             396 |       |        |       |         |
 |----------------------------------------------------------------+-----------------+-------+--------+-------+---------|
 |                                                                |                 |       |        |       |         |
 |----------------------------------------------------------------+-----------------+-------+--------+-------+---------|
